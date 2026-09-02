@@ -1,6 +1,7 @@
 import { redis, redisConfigured } from '@/lib/redis';
 import { blockingXRead } from '@/lib/stream-read';
 import { json, handleRouteError } from '@/lib/api';
+import { restUrl, restToken } from '@/lib/redis-credentials';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,14 +23,11 @@ const PROBE_BLOCK_MS = 3000;
  */
 export async function GET() {
   const checks: Record<string, unknown> = {
-    // TEMP DIAGNOSTIC: key names only, never values.
-    envValueLengths: Object.fromEntries(
-      Object.keys(process.env)
-        .filter((k) => /KV_|UPSTASH|SESSION_SECRET|GIPHY|REDIS|strg/i.test(k))
-        .sort()
-        .map((k) => [k, (process.env[k] ?? '').length])
-    ),
     redisConfigured: redisConfigured(),
+    // Names only. A Vercel "Sensitive" variable registers its key but injects
+    // no value, so knowing *which* name supplied the credentials is the
+    // difference between a five-minute fix and an hour of guessing.
+    credentialSource: credentialSource(),
     sessionSecret: secretState(),
     giphy: process.env.GIPHY_API_KEY ? 'enabled' : 'disabled (stickers still work)',
   };
@@ -76,6 +74,19 @@ export async function GET() {
   } catch (err) {
     return handleRouteError(err);
   }
+}
+
+function credentialSource() {
+  const names = ['KV_REST_API_URL', 'UPSTASH_REDIS_REST_URL', 'strg_KV_REST_API_URL', 'STRG_KV_REST_API_URL'];
+  const url = restUrl();
+  const token = restToken();
+  const which = names.find((n) => process.env[n]?.trim() === url);
+  const empty = names.filter((n) => n in process.env && !process.env[n]?.trim());
+  return {
+    usingUrlFrom: which ?? null,
+    haveToken: Boolean(token),
+    emptyButPresent: empty,
+  };
 }
 
 function secretState() {
