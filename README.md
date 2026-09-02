@@ -192,6 +192,41 @@ the first two terminals.
 
    The endpoint reports configuration *state* only, never any secret value.
 
+### If a build says BLOCKED
+
+```
+Git author <you>@example.com must have access to the team <team>
+on Vercel to create deployments.
+```
+
+Vercel refuses to build a commit whose **author email** it does not recognise
+as belonging to the account. This bites when your global `git config
+user.email` is a work address but the Vercel account is a personal one — the
+push succeeds, GitHub is happy, and the deployment silently sits in `BLOCKED`
+with a `?` duration and no build logs, which reads like a hung queue rather
+than a rejection.
+
+Check the real state with:
+
+```bash
+vercel ls <project>          # shows UNKNOWN, unhelpfully
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://api.vercel.com/v6/deployments?projectId=<id>&teamId=<team>"
+```
+
+The API response carries the actual `readyState` and `errorMessage`; the CLI
+flattens both to `UNKNOWN`.
+
+Fix it by setting the author for this repo only:
+
+```bash
+git config --local user.email <the email on your Vercel account>
+```
+
+Existing commits keep their original author, so redeploying an *older* commit
+will still be blocked. Either add the other address under Vercel → Account
+Settings → Emails, or rewrite the authorship.
+
 ### A note on Vercel plans
 
 The SSE route sets `maxDuration = 60`. On Hobby that is the ceiling, and the
