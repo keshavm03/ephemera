@@ -192,6 +192,32 @@ the first two terminals.
 
    The endpoint reports configuration *state* only, never any secret value.
 
+### Do NOT mark these variables "Sensitive"
+
+Vercel offers a **Sensitive** environment variable type. Do not use it for
+anything this app reads. A Sensitive variable *registers its key* in
+`process.env` but **injects no value at runtime** — it arrives as an empty
+string.
+
+The failure is nasty because everything looks correct: the variables are listed
+in the dashboard, `Object.keys(process.env)` contains all of them, the build is
+green, and the app still insists Redis is unconfigured.
+
+```
+KV_REST_API_URL        type=sensitive   length at runtime: 0
+strg_KV_REST_API_URL   type=encrypted   length at runtime: 39
+```
+
+It also breaks fallback chains, which is worth knowing generally:
+`process.env.A ?? process.env.B` yields `''` when `A` is set-but-empty, because
+`??` only falls through on null/undefined. One blank variable silently defeats
+every alternative name. `src/lib/redis-credentials.ts` resolves by *first
+non-empty* value instead, and `/api/health` reports `credentialSource` — which
+name won, and which are present-but-empty.
+
+Use the default (Encrypted) type. If you already created one as Sensitive, it
+cannot be converted — delete and recreate it.
+
 ### If a build says BLOCKED
 
 ```
@@ -259,8 +285,20 @@ Tested end-to-end against a real Redis with three concurrent participants:
 | UTF-8 / emoji round-trip | ✅ |
 | `XREAD BLOCK` honoured (local redis) | ✅ blocked 3032ms of 3000ms |
 
-Not yet verified against Upstash's own REST proxy — `/api/health` measures it
-on the deployed instance.
+**Verified against the live Vercel + Upstash deployment**, not just locally:
+
+| Check (production) | Result |
+| --- | --- |
+| `XREAD BLOCK` honoured by Upstash's REST proxy | ✅ blocked 3059ms of 3000ms |
+| Redis reachable | ✅ 79ms |
+| DM reaches recipient, not a third party | ✅ Bob 1, Carol 0 |
+| GIF host allowlist / sticker allowlist / no-session / non-host terminate | ✅ all rejected |
+| Host terminate → all clients notified by name | ✅ |
+| Heartbeat + send during grace window | ✅ rejected, no resurrection |
+| Room gone afterwards | ✅ join 404, page shows "This room has ended" |
+
+The blocking-read assumption was the single biggest unknown in the design, and
+it holds on real Upstash: delivery is push, not poll.
 
 ---
 
