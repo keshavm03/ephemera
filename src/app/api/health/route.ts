@@ -22,6 +22,10 @@ const PROBE_BLOCK_MS = 3000;
  */
 export async function GET() {
   const checks: Record<string, unknown> = {
+    // TEMP DIAGNOSTIC: key names only, never values.
+    envKeysVisible: Object.keys(process.env)
+      .filter((k) => /KV_|UPSTASH|SESSION_SECRET|GIPHY|REDIS|strg/i.test(k))
+      .sort(),
     redisConfigured: redisConfigured(),
     sessionSecret: secretState(),
     giphy: process.env.GIPHY_API_KEY ? 'enabled' : 'disabled (stickers still work)',
