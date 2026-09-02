@@ -167,6 +167,31 @@ the first two terminals.
 
 5. Redeploy.
 
+6. **Verify it.** Open `https://<your-app>.vercel.app/api/health`:
+
+   ```json
+   {
+     "ok": true,
+     "checks": {
+       "redisConfigured": true,
+       "sessionSecret": "ok",
+       "redisLatencyMs": 12,
+       "streams": "ok",
+       "blockingReads": { "honoured": true, "blockedForMs": 3021 }
+     }
+   }
+   ```
+
+   `blockingReads.honoured` is the one to look at. The realtime design assumes
+   Upstash's REST proxy holds `XREAD BLOCK` open. If it does not, the app still
+   works — `stream-read.ts` has a minimum-elapsed floor that degrades it to a
+   ~1s poll — but that costs roughly **25x more Redis commands per client**, and
+   the only place that would otherwise surface is a surprise bill. If it reports
+   `honoured: false`, raise `minElapsedMs` in `src/lib/stream-read.ts` to trade
+   a little latency back for cost.
+
+   The endpoint reports configuration *state* only, never any secret value.
+
 ### A note on Vercel plans
 
 The SSE route sets `maxDuration = 60`. On Hobby that is the ceiling, and the
@@ -197,6 +222,10 @@ Tested end-to-end against a real Redis with three concurrent participants:
 | SSE resume via `Last-Event-ID` | ✅ exact, no gap or duplicate |
 | Rate limit (30 msgs / 10s) | ✅ 30 accepted, 10 limited |
 | UTF-8 / emoji round-trip | ✅ |
+| `XREAD BLOCK` honoured (local redis) | ✅ blocked 3032ms of 3000ms |
+
+Not yet verified against Upstash's own REST proxy — `/api/health` measures it
+on the deployed instance.
 
 ---
 
@@ -216,6 +245,7 @@ src/
       rooms/[code]/leave/route.ts       POST   drop out
       rooms/[code]/terminate/route.ts   POST   host only — destroys the room
       giphy/route.ts                    GET    key-hiding Giphy proxy
+      health/route.ts                   GET    post-deploy self-check
   lib/
     room.ts          room lifecycle, messages, presence, termination
     stream-read.ts   blocking XREAD over the Upstash REST protocol
