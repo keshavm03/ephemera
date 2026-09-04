@@ -44,6 +44,14 @@ export function validateMessage(kind: unknown, body: unknown): ValidationResult 
       return { ok: true, kind: 'sticker', body };
     }
 
+    case 'photo': {
+      // A photo body is an opaque id pointing at a blob already stored under
+      // this room. Nothing user-supplied is ever placed in the img src beyond
+      // this id, so there is no host to allowlist and no url to spoof.
+      if (!/^[0-9a-f]{32}$/.test(body)) return { ok: false, error: 'Invalid photo id' };
+      return { ok: true, kind: 'photo', body };
+    }
+
     case 'gif': {
       let url: URL;
       try {

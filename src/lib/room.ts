@@ -7,6 +7,7 @@ import {
   PRESENCE_WINDOW_MS,
 } from './keys';
 import type { ChatMessage, Member, RoomMeta } from './types';
+import { deleteAllPhotos } from './photos';
 import { isDmChannel } from './types';
 
 /* ------------------------------------------------------------------ rooms */
@@ -65,7 +66,10 @@ export async function terminateRoom(code: string, byName: string): Promise<void>
     fromColor: '#94a3b8',
     body: `${TERMINATED_PREFIX}${byName}`,
   });
-  await r.del(K.meta(code), K.members(code));
+  // Blobs go first: they are the largest thing the room holds, and they are
+  // enumerated from an index that is itself about to be deleted.
+  await deleteAllPhotos(code);
+  await r.del(K.meta(code), K.members(code), K.photoIndex(code));
   await r.expire(K.stream(code), TERMINATION_GRACE_SECONDS);
 }
 

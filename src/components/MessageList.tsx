@@ -1,6 +1,6 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, SessionClaims } from '@/lib/types';
 
 /**
@@ -12,12 +12,27 @@ import type { ChatMessage, SessionClaims } from '@/lib/types';
 export default function MessageList({
   messages,
   me,
+  code,
 }: {
   messages: ChatMessage[];
   me: SessionClaims;
+  code: string;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
+
+  // Tapping a photo opens it full size. Held here so only one can be open, and
+  // so Escape has a single thing to close.
+  const [lightbox, setLightbox] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setLightbox(null);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [lightbox]);
 
   // Only auto-scroll while the reader is already at the bottom. Yanking someone
   // away from something they scrolled up to read is the classic chat-UI sin.
@@ -56,9 +71,38 @@ export default function MessageList({
             m.kind !== 'system' &&
             m.ts - prev.ts < 120_000;
 
-          return <Bubble key={m.id} message={m} mine={m.from === me.uid} grouped={Boolean(grouped)} />;
+          return (
+            <Bubble
+              key={m.id}
+              message={m}
+              mine={m.from === me.uid}
+              grouped={Boolean(grouped)}
+              code={code}
+              onOpenPhoto={setLightbox}
+            />
+          );
         })}
       </ul>
+
+      {lightbox && (
+        <div
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Photo"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/90 p-4"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" className="max-h-full max-w-full rounded-lg object-contain" />
+          <button
+            onClick={() => setLightbox(null)}
+            aria-label="Close photo"
+            className="absolute right-4 top-4 grid size-10 place-items-center rounded-full bg-ink-900/80 text-lg text-ink-50"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {!pinned && (
         <button
@@ -76,10 +120,14 @@ function Bubble({
   message,
   mine,
   grouped,
+  code,
+  onOpenPhoto,
 }: {
   message: ChatMessage;
   mine: boolean;
   grouped: boolean;
+  code: string;
+  onOpenPhoto: (src: string) => void;
 }) {
   if (message.kind === 'system') {
     return (
@@ -117,6 +165,29 @@ function Bubble({
           <div className="px-1 text-5xl leading-none select-none" role="img" aria-label="sticker">
             {message.body}
           </div>
+        )}
+
+        {message.kind === 'photo' && (
+          <button
+            onClick={() => onOpenPhoto(`/api/rooms/${code}/photos/${message.body}`)}
+            className="block overflow-hidden rounded-xl border border-ink-700 bg-ink-850 transition hover:border-accent"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/rooms/${code}/photos/${message.body}`}
+              alt={message.meta?.alt || 'Photo'}
+              width={message.meta?.w}
+              height={message.meta?.h}
+              loading="lazy"
+              // Reserving the ratio keeps the list from jumping as photos decode.
+              style={
+                message.meta?.w && message.meta?.h
+                  ? { aspectRatio: `${message.meta.w} / ${message.meta.h}` }
+                  : undefined
+              }
+              className="max-h-80 w-auto max-w-full object-contain"
+            />
+          </button>
         )}
 
         {message.kind === 'gif' && (

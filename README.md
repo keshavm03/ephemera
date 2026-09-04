@@ -2,8 +2,8 @@
 
 Login-free chat rooms that delete themselves.
 
-Open a room, share the six-character code, talk. Text, GIFs, stickers, and
-private DMs between people in the room. When the host ends it, the entire
+Open a room, share the six-character code, talk. Text, photos, GIFs, stickers,
+and private DMs between people in the room. When the host ends it, the entire
 transcript — including every DM — is deleted within seconds. There is no
 account system, no database of past conversations, and no archive.
 
@@ -59,6 +59,31 @@ faster, because messages are pushed the instant they land rather than on the
 next poll tick. `src/lib/stream-read.ts` keeps a minimum-elapsed floor so that
 if a backend ever ignored `BLOCK`, the loop would degrade to a slow poll
 instead of spinning.
+
+### Photos live in Redis, not a bucket
+
+Uploaded photos are stored as ordinary keys under `room:{code}:`, the same
+prefix as everything else, and their ids are tracked in a set so termination
+can delete them outright.
+
+Object storage would handle bigger files, but it would also mean the promise
+that *everything* disappears when a room ends depended on a second system and
+a cleanup job that could quietly fail. Keeping blobs beside the transcript
+makes deletion structural rather than best-effort: the same code path that
+drops the roster drops the photos.
+
+The cost is a size ceiling — Upstash caps a REST request at 1MB and base64
+inflates by 4/3 — so the browser downscales before uploading:
+`src/lib/downscale.ts` targets 1600px and steps quality down before it steps
+dimensions down, because a slightly softer large photo reads better in a chat
+bubble than a crisp small one. Animated GIFs are passed through untouched
+rather than flattened onto a canvas, and rejected if already too big.
+
+Access is authorised, not merely obscure. Photo ids are unguessable, but
+`GET /api/rooms/:code/photos/:id` still checks the session and applies the same
+rule as `visibleTo`: a photo posted into a DM is refused to everyone except its
+two participants — and refused with a 404 rather than a 403, since confirming
+the id exists would itself leak that a DM happened.
 
 ### One stream, many conversations
 
@@ -343,6 +368,8 @@ src/
       rooms/[code]/join/route.ts        POST   claim a name, get a session
       rooms/[code]/stream/route.ts      GET    the SSE feed
       rooms/[code]/messages/route.ts    POST   send (public or DM)
+      rooms/[code]/photos/route.ts      POST   upload a photo + post the message
+      rooms/[code]/photos/[id]/route.ts GET    serve a photo, access-checked
       rooms/[code]/heartbeat/route.ts   POST   presence for backgrounded tabs
       rooms/[code]/leave/route.ts       POST   drop out
       rooms/[code]/terminate/route.ts   POST   host only — destroys the room
@@ -350,6 +377,8 @@ src/
       health/route.ts                   GET    post-deploy self-check
   lib/
     room.ts          room lifecycle, messages, presence, termination
+    photos.ts        photo blobs, access rules, deletion with the room
+    downscale.ts     browser-side resize so uploads fit the store
     stream-read.ts   blocking XREAD over the Upstash REST protocol
     session.ts       HMAC-signed room-scoped cookies
     validate.ts      message validation, GIF host allowlist
@@ -367,6 +396,12 @@ scripts/
 
 - A room retains its **last 500 messages** (`STREAM_MAXLEN`); older ones are
   trimmed. This is a chat room, not an archive.
+- Photos are capped at **400KB after downscaling** (`MAX_PHOTO_BYTES`). The
+  browser resizes automatically; only an animated GIF that is already larger
+  gets rejected outright, since re-encoding it would kill the animation.
+- Photo blobs are given **twice the room's idle TTL**. `touchRoom` refreshes a
+  fixed set of keys per write, and extending every blob too would make each
+  message cost O(photos) round-trips.
 - Presence has a 45-second window, so a crashed tab disappears from the roster
   within that time rather than instantly.
 - Terminating is irreversible by design. There is no undo and no backup.

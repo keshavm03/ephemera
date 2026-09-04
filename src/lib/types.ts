@@ -1,4 +1,4 @@
-export type MessageKind = 'text' | 'gif' | 'sticker' | 'system';
+export type MessageKind = 'text' | 'gif' | 'sticker' | 'photo' | 'system';
 
 /** A single chat message as it lives inside the Redis stream. */
 export interface ChatMessage {
@@ -13,7 +13,7 @@ export interface ChatMessage {
   fromColor: string;
   /** Recipient uid — only present on DMs. Used for server-side fan-out filtering. */
   to?: string;
-  /** text body, or the gif/sticker url. */
+  /** Text body, a gif url, a sticker glyph, or a photo id. */
   body: string;
   /** Optional metadata for gifs (dimensions keep the scroll from jumping). */
   meta?: { w?: number; h?: number; alt?: string };

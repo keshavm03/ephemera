@@ -115,6 +115,33 @@ export default function RoomClient({
     [code, activeChannel, me.uid, status]
   );
 
+  /**
+   * Photos go to their own endpoint as multipart rather than through `send`:
+   * the blob is stored and the message posted in one request, so a failure
+   * cannot leave an orphaned image behind.
+   */
+  const sendPhoto = useCallback(
+    async (blob: Blob, width: number, height: number, alt: string) => {
+      if (status === 'ended') return;
+      setError(null);
+      const peer = dmPeer(activeChannel, me.uid);
+      const form = new FormData();
+      // A filename is required for the value to arrive as a File server-side.
+      form.append('photo', blob, 'photo');
+      form.append('w', String(width));
+      form.append('h', String(height));
+      form.append('alt', alt);
+      if (peer) form.append('to', peer);
+
+      const res = await fetch(`/api/rooms/${code}/photos`, { method: 'POST', body: form });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Photo failed to send');
+      }
+    },
+    [code, activeChannel, me.uid, status]
+  );
+
   const openDm = useCallback(
     (uid: string) => switchChannel(dmChannelId(me.uid, uid)),
     [switchChannel, me.uid]
@@ -175,7 +202,7 @@ export default function RoomClient({
             </div>
           )}
 
-          <MessageList key={activeChannel} messages={visible} me={me} />
+          <MessageList key={activeChannel} messages={visible} me={me} code={code} />
 
           {error && (
             <p role="alert" className="border-t border-rose-500/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-300">
@@ -185,6 +212,7 @@ export default function RoomClient({
 
           <Composer
             onSend={send}
+            onSendPhoto={sendPhoto}
             disabled={status === 'ended' || (Boolean(peerUid) && !peer)}
             placeholder={
               peerUid
