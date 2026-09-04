@@ -7,8 +7,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev:redis": "redis-server --port 6399 --save '' --appendonly no",
     "dev:shim": "SHIM_REDIS_PORT=6399 SHIM_PORT=8079 node scripts/upstash-shim.mjs"
   },
@@ -23,7 +25,10 @@
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.4",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.11"
   }
 }

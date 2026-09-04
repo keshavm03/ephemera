@@ -143,6 +143,35 @@ the first two terminals.
 
 ---
 
+## Tests, linting and CI
+
+```bash
+npm test          # vitest, ~70 assertions, no Redis required
+npm run test:watch
+npm run lint      # eslint (flat config)
+npm run typecheck # tsc --noEmit
+```
+
+The suite covers the pure logic only — the parts where a silent regression
+would be both easy to introduce and hard to notice in the UI:
+
+| Area | Why it is pinned |
+| --- | --- |
+| `validate.ts` | The GIF host allowlist is the boundary that stops a crafted payload from turning the message list into an arbitrary-image or tracking-pixel surface. Lookalike hosts and userinfo spoofs (`https://media.giphy.com@evil.example/`) are covered explicitly, as is the rule that a client may never forge a `system` message. |
+| `session.ts` | Host powers hang off the `host` claim, so tampered payloads, foreign-secret signatures and expired tokens each get a test. |
+| `redis-credentials.ts` | The "Sensitive variable injects an empty string" trap documented above now has a regression test, so the `??`-chain bug cannot come back. |
+| `redis.ts` | `compareStreamIds` — a plain string compare gets `100-2` vs `100-10` wrong, which would silently stall a cursor. |
+| `room.ts` | `visibleTo` is the entire privacy guarantee for DMs. |
+| `names.ts` | Room codes must never contain `0/O/1/I`, because they are read aloud. |
+
+Anything that needs a live Redis is deliberately left to `/api/health`, which
+probes a real deployment rather than a mock.
+
+CI (`.github/workflows/ci.yml`) runs typecheck, lint, tests and a production
+build on every push to `main` and every pull request.
+
+---
+
 ## Deploying to Vercel
 
 1. **Import the repo** at [vercel.com/new](https://vercel.com/new).
@@ -325,10 +354,13 @@ src/
     session.ts       HMAC-signed room-scoped cookies
     validate.ts      message validation, GIF host allowlist
     keys.ts          key naming and every TTL constant
+    __tests__/       unit tests for the pure logic above
   components/        UI
   hooks/             useRoomStream — the EventSource client
 scripts/
   upstash-shim.mjs   local Upstash REST stand-in for offline development
+.github/workflows/
+  ci.yml             typecheck + lint + test + build
 ```
 
 ## Limits worth knowing
