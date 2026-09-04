@@ -3,6 +3,7 @@ import { getRoom } from '@/lib/room';
 import { readSession } from '@/lib/session';
 import { normalizeCode } from '@/lib/validate';
 import { redisConfigured } from '@/lib/redis';
+import { randomName } from '@/lib/names';
 import JoinGate from '@/components/JoinGate';
 import RoomClient from '@/components/RoomClient';
 
@@ -36,7 +37,7 @@ export default async function RoomPage({
     return <RoomClient code={code} title={room.title} initialSelf={{ ...self, host: room.hostId === self.uid }} />;
   }
 
-  return <JoinGate code={code} title={room.title} />;
+  return <JoinGate code={code} title={room.title} suggestion={randomName()} />;
 }
 
 function Gone({ title, detail }: { title: string; detail?: string }) {
