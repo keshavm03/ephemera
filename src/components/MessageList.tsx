@@ -1,16 +1,20 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import type { ChatMessage, SessionClaims } from '@/lib/types';
 
+/**
+ * Mounted with `key={channel}` by the parent, so switching conversations gives
+ * a fresh component: `pinned` starts true again and the layout effect below
+ * lands on the newest message. That replaces an effect which reset the same
+ * state after render — a cascading render React now flags outright.
+ */
 export default function MessageList({
   messages,
   me,
-  channel,
 }: {
   messages: ChatMessage[];
   me: SessionClaims;
-  channel: string;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(true);
@@ -27,13 +31,6 @@ export default function MessageList({
     const el = scroller.current;
     if (el && pinned) el.scrollTop = el.scrollHeight;
   }, [messages, pinned]);
-
-  // Switching channels always lands at the newest message.
-  useEffect(() => {
-    setPinned(true);
-    const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [channel]);
 
   return (
     <div

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRoomStream } from '@/hooks/useRoomStream';
 import { dmChannelId, dmPeer, type ChatMessage, type SessionClaims } from '@/lib/types';
@@ -48,14 +48,32 @@ export default function RoomClient({
   const visible = byChannel.get(activeChannel) ?? [];
 
   /* --- unread badges ---------------------------------------------------- */
-  // Tracks the newest message id each channel had been *looked at* with.
+  // The newest message id each channel was last *looked at* with.
+  //
+  // The mark is stamped when you leave a channel, in the switch handler, rather
+  // than from an effect that watched the message list. Only the channel being
+  // left can change, `unread` skips whichever channel is active, and a user
+  // action is what makes it stale — so an event handler is the whole story.
+  // The previous effect re-rendered the room on every inbound message just to
+  // move a mark nothing was displaying yet.
   const [readMarks, setReadMarks] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    const list = byChannel.get(activeChannel);
-    const newest = list?.length ? list[list.length - 1].id : null;
-    if (newest) setReadMarks((prev) => (prev[activeChannel] === newest ? prev : { ...prev, [activeChannel]: newest }));
-  }, [activeChannel, byChannel]);
+  const switchChannel = useCallback(
+    (next: string) => {
+      setSidebarOpen(false);
+      if (next === activeChannel) return;
+      // Stamp the channel being left as read, up to its newest message.
+      const list = byChannel.get(activeChannel);
+      const newest = list?.length ? list[list.length - 1].id : null;
+      if (newest) {
+        setReadMarks((prev) =>
+          prev[activeChannel] === newest ? prev : { ...prev, [activeChannel]: newest }
+        );
+      }
+      setActiveChannel(next);
+    },
+    [activeChannel, byChannel]
+  );
 
   const unread = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -98,11 +116,8 @@ export default function RoomClient({
   );
 
   const openDm = useCallback(
-    (uid: string) => {
-      setActiveChannel(dmChannelId(me.uid, uid));
-      setSidebarOpen(false);
-    },
-    [me.uid]
+    (uid: string) => switchChannel(dmChannelId(me.uid, uid)),
+    [switchChannel, me.uid]
   );
 
   async function leave() {
@@ -143,10 +158,7 @@ export default function RoomClient({
           me={me}
           activeChannel={activeChannel}
           unread={unread}
-          onSelectRoom={() => {
-            setActiveChannel('room');
-            setSidebarOpen(false);
-          }}
+          onSelectRoom={() => switchChannel('room')}
           onSelectDm={openDm}
           onClose={() => setSidebarOpen(false)}
         />
@@ -163,7 +175,7 @@ export default function RoomClient({
             </div>
           )}
 
-          <MessageList messages={visible} me={me} channel={activeChannel} />
+          <MessageList key={activeChannel} messages={visible} me={me} />
 
           {error && (
             <p role="alert" className="border-t border-rose-500/20 bg-rose-500/10 px-4 py-2 text-xs text-rose-300">
