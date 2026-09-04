@@ -76,6 +76,17 @@ export async function upsertMember(code: string, member: Member): Promise<void> 
   await touchRoom(code);
 }
 
+/** The stored roster entry for `uid`, or null. Unreadable JSON is treated as absent. */
+export async function getMember(code: string, uid: string): Promise<Member | null> {
+  const raw = await redis().hget<string | Member>(K.members(code), uid);
+  if (!raw) return null;
+  try {
+    return typeof raw === 'string' ? (JSON.parse(raw) as Member) : raw;
+  } catch {
+    return null;
+  }
+}
+
 export async function heartbeat(code: string, uid: string): Promise<void> {
   const r = redis();
   const raw = await r.hget<string | Member>(K.members(code), uid);

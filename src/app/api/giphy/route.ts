@@ -1,4 +1,6 @@
 import { json, fail, handleRouteError } from '@/lib/api';
+import { allow } from '@/lib/ratelimit';
+import { redisConfigured } from '@/lib/redis';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +16,15 @@ export async function GET(req: Request) {
   try {
     const key = process.env.GIPHY_API_KEY;
     if (!key) return json({ enabled: false, gifs: [] });
+
+    // This route spends *our* Giphy quota on behalf of an unauthenticated
+    // caller, which makes it the one open proxy in the app. Cap it per IP.
+    // Skipped when Redis is absent so the endpoint keeps degrading gracefully
+    // rather than turning a missing dependency into a hard failure.
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
+    if (redisConfigured() && !(await allow(`giphy:${ip}`, 60, 60))) {
+      return fail('Too many GIF searches. Slow down a moment.', 429);
+    }
 
     const url = new URL(req.url);
     const q = (url.searchParams.get('q') ?? '').trim().slice(0, 60);

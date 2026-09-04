@@ -1,4 +1,4 @@
-import { getRoom, upsertMember, appendMessage } from '@/lib/room';
+import { getRoom, upsertMember, appendMessage, getMember } from '@/lib/room';
 import { ROOM_TTL_SECONDS } from '@/lib/keys';
 import { randomId, randomColor, sanitizeName } from '@/lib/names';
 import { setSessionCookie, readSession } from '@/lib/session';
@@ -37,11 +37,16 @@ export async function POST(req: Request, { params }: Ctx) {
     const color = existing?.color ?? randomColor();
     const now = Date.now();
 
+    // The roster is ordered by arrival, so a refresh must not restamp
+    // joinedAt — doing so shuffles the rejoining person to the bottom of
+    // everyone else's sidebar. Fall back to `now` only for a genuine arrival.
+    const prior = existing ? await getMember(code, uid) : null;
+
     await upsertMember(code, {
       uid,
       name,
       color,
-      joinedAt: existing ? now : now,
+      joinedAt: prior?.joinedAt ?? now,
       lastSeen: now,
     });
 
