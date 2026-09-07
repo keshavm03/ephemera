@@ -131,6 +131,69 @@ a regression probe for exactly this in the test notes below.
 
 ---
 
+## Games
+
+A room can host one game at a time. Anyone opens a table from the 🎮 button in
+the header, anyone else takes a seat, and the game dies with the room like
+everything else here.
+
+| Game | Players | Notes |
+| --- | --- | --- |
+| Tic-tac-toe | 2 | |
+| Connect Four | 2 | |
+| Drag Race | 2-4 | Turn-based. Coast for a safe 3, or push a d6 where a 1 spins you out. |
+| Ludo | 2-4 | Sixes to leave the yard, captures, safe squares, exact count home. |
+| Chess | 2 | Full rules: castling, en passant, promotion, checkmate, stalemate, fifty-move, insufficient material. |
+
+### Why the racing game is turn-based
+
+Because a real-time one cannot work over this transport, and pretending
+otherwise would produce something that looks fine in a demo and falls over in
+use.
+
+Every position update would be a Redis stream write fanned out over SSE. The
+stream is capped at 500 entries (`STREAM_MAXLEN`) and the whole cost argument
+in this README rests on a few thousand Redis commands per client per day. A
+thirty-updates-a-second racer would blow through the stream cap in seventeen
+seconds and the daily command budget in about two minutes. Real-time racing
+needs WebSockets or WebRTC and a different persistence story — a different
+application, really.
+
+So the racing lives in the decision rather than the reflex: each turn you take
+a guaranteed 3 or gamble on a d6, and trailing cars get a slipstream bonus so
+one bad opening roll does not decide the race.
+
+### How game state travels
+
+Games reuse the machinery chat already has, rather than adding a second one:
+
+- The board is one Redis key per room (`room:{code}:game`), read and written
+  whole, so no client ever sees a half-applied move.
+- Every accepted move is appended to the **existing message stream** with kind
+  `game`. The SSE route recognises that kind and converts it into a `game`
+  frame instead of a chat message, so board state arrives over the same
+  blocking `XREAD` that delivers messages — no second connection, no polling,
+  and no reconciliation.
+- `game` is server-generated only. `validateMessage` has no case for it, so a
+  client cannot forge one.
+- On connect the route sends the current game straight after `hello`, because
+  the stream only carries *changes* and a late joiner needs the board now.
+
+### Why the engines are pure
+
+Every game is a pure function of `(game, seat, move)` — no clock, no Redis, and
+no randomness read from the ambient environment. **Dice are rolled by the route
+and passed in as part of the move**, which is what stops a client choosing its
+own luck and simultaneously makes the rules testable without a server.
+
+That is where the complexity is allowed to live. Chess move generation is
+two-stage: pseudo-legal moves first, then a filter that plays each one and
+discards any leaving your own king attacked. It is not the fastest approach,
+but it is the one that cannot silently get pins, discovered checks or
+castling-through-check wrong — and there are tests for each of those.
+
+---
+
 ## Running it locally
 
 You need Node 18.18+ and either an Upstash account or a local Redis.
@@ -384,7 +447,12 @@ src/
     validate.ts      message validation, GIF host allowlist
     keys.ts          key naming and every TTL constant
     __tests__/       unit tests for the pure logic above
+  games/           pure rule engines — no Redis, no clock, no ambient randomness
+    types.ts         board and game shapes shared by every engine
+    chess.ts         full legal move generation, check and mate detection
+    ludo.ts          entry, captures, safe squares, exact-count home
   components/        UI
+    games/           the lobby, the panel and one renderer per board
   hooks/             useRoomStream — the EventSource client
 scripts/
   upstash-shim.mjs   local Upstash REST stand-in for offline development
