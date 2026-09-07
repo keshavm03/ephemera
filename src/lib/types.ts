@@ -1,4 +1,11 @@
-export type MessageKind = 'text' | 'gif' | 'sticker' | 'photo' | 'system';
+import type { Game } from './games/types';
+
+/**
+ * 'game' is server-generated only. It never reaches the message list: the SSE
+ * route turns it into a `game` frame instead, which is how board state reaches
+ * every client over the connection chat already uses.
+ */
+export type MessageKind = 'text' | 'gif' | 'sticker' | 'photo' | 'system' | 'game';
 
 /** A single chat message as it lives inside the Redis stream. */
 export interface ChatMessage {
@@ -52,6 +59,7 @@ export type ServerEvent =
   | { type: 'hello'; self: SessionClaims; room: RoomMeta }
   | { type: 'message'; message: ChatMessage }
   | { type: 'presence'; members: Member[] }
+  | { type: 'game'; game: Game | null }
   | { type: 'terminated'; by: string }
   | { type: 'ping' };
 

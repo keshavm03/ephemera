@@ -12,12 +12,15 @@ export const K = {
   /** Set of photo ids belonging to this room. */
   photoIndex: (code: string) => `room:${code}:photos`,
   photo: (code: string, id: string) => `room:${code}:photo:${id}`,
+  /** The room's single active game, if any. */
+  game: (code: string) => `room:${code}:game`,
   /** The fixed keys — photo blobs are enumerated via `photoIndex`. */
   all: (code: string) => [
     K.meta(code),
     K.stream(code),
     K.members(code),
     K.photoIndex(code),
+    K.game(code),
   ],
 };
 
