@@ -13,6 +13,8 @@ import { K } from '@/lib/keys';
 import { readSession } from '@/lib/session';
 import { normalizeCode } from '@/lib/validate';
 import { fail, handleRouteError } from '@/lib/api';
+import { getGame } from '@/lib/game-room';
+import type { Game } from '@/lib/games/types';
 import type { ServerEvent, Member } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -85,9 +87,32 @@ export async function GET(req: Request, { params }: Ctx) {
 
         req.signal.addEventListener('abort', shutdown);
 
+        /**
+         * Board state travels as a stream entry of kind 'game', so it reaches
+         * clients over the same blocking XREAD that delivers chat — no second
+         * connection and no polling. It is converted here rather than in the
+         * browser so it never lands in the message list.
+         */
+        const sendGameFrame = (body: string): boolean => {
+          try {
+            send({ type: 'game', game: JSON.parse(body) as Game | null });
+          } catch {
+            // A malformed game frame must not kill the stream.
+          }
+          return true;
+        };
+
         // Nudge proxies to start flushing immediately.
         controller.enqueue(encoder.encode(': open\n\n'));
         send({ type: 'hello', self, room });
+
+        // A client that connects mid-game needs the board now, not after the
+        // next move — the stream only carries changes.
+        try {
+          send({ type: 'game', game: await getGame(code) });
+        } catch (err) {
+          console.error('[ephemera] initial game read failed', err);
+        }
 
         // --- backfill ------------------------------------------------------
         let cursor = resumeFrom;
@@ -101,6 +126,10 @@ export async function GET(req: Request, { params }: Ctx) {
               send({ type: 'terminated', by: m.body.slice(TERMINATED_PREFIX.length) });
               shutdown();
               return;
+            }
+            if (m.kind === 'game') {
+              sendGameFrame(m.body);
+              continue;
             }
             send({ type: 'message', message: m }, m.id);
           }
@@ -138,6 +167,10 @@ export async function GET(req: Request, { params }: Ctx) {
                 send({ type: 'terminated', by: msg.body.slice(TERMINATED_PREFIX.length) });
                 shutdown();
                 return;
+              }
+              if (msg.kind === 'game') {
+                sendGameFrame(msg.body);
+                continue;
               }
               if (visibleTo(msg, self.uid)) send({ type: 'message', message: msg }, msg.id);
             }

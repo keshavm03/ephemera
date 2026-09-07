@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage, Member, ServerEvent, SessionClaims } from '@/lib/types';
+import type { Game } from '@/lib/games/types';
 
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'ended';
 
@@ -11,6 +12,8 @@ interface RoomStream {
   self: SessionClaims | null;
   status: ConnectionState;
   endedBy: string | null;
+  /** The room's active game, or null when no table is open. */
+  game: Game | null;
 }
 
 /**
@@ -26,6 +29,7 @@ export function useRoomStream(code: string, initialSelf: SessionClaims): RoomStr
   const [self, setSelf] = useState<SessionClaims | null>(initialSelf);
   const [status, setStatus] = useState<ConnectionState>('connecting');
   const [endedBy, setEndedBy] = useState<string | null>(null);
+  const [game, setGame] = useState<Game | null>(null);
 
   // Ids already rendered. A reconnect can overlap by a frame or two, and
   // duplicated bubbles are far more noticeable than a missing one.
@@ -62,6 +66,11 @@ export function useRoomStream(code: string, initialSelf: SessionClaims): RoomStr
           break;
         case 'presence':
           setMembers(payload.members);
+          break;
+        case 'game':
+          // The server is the only writer, so the newest frame always wins —
+          // there is no local board state to reconcile against.
+          setGame(payload.game);
           break;
         case 'terminated':
           ended.current = true;
@@ -102,5 +111,5 @@ export function useRoomStream(code: string, initialSelf: SessionClaims): RoomStr
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [code]);
 
-  return { messages, members, self, status, endedBy };
+  return { messages, members, self, status, endedBy, game };
 }

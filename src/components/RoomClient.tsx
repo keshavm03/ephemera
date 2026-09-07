@@ -9,6 +9,7 @@ import MessageList from './MessageList';
 import Composer from './Composer';
 import RoomHeader from './RoomHeader';
 import EndedOverlay from './EndedOverlay';
+import GamePanel from './games/GamePanel';
 
 export interface OutgoingMessage {
   kind: 'text' | 'gif' | 'sticker';
@@ -26,11 +27,12 @@ export default function RoomClient({
   initialSelf: SessionClaims;
 }) {
   const router = useRouter();
-  const { messages, members, self, status, endedBy } = useRoomStream(code, initialSelf);
+  const { messages, members, self, status, endedBy, game } = useRoomStream(code, initialSelf);
 
   const me = self ?? initialSelf;
   const [activeChannel, setActiveChannel] = useState('room');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [gamesOpen, setGamesOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Bucket messages by channel once per update instead of filtering the whole
@@ -174,6 +176,9 @@ export default function RoomClient({
         me={me}
         memberCount={members.length}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        onToggleGames={() => setGamesOpen((v) => !v)}
+        gamesOpen={gamesOpen}
+        gameActive={Boolean(game)}
         onLeave={leave}
         onTerminate={terminate}
       />
@@ -200,6 +205,10 @@ export default function RoomClient({
                 the two of you receive these messages.
               </span>
             </div>
+          )}
+
+          {gamesOpen && (
+            <GamePanel game={game} me={me} code={code} onClose={() => setGamesOpen(false)} />
           )}
 
           <MessageList key={activeChannel} messages={visible} me={me} code={code} />

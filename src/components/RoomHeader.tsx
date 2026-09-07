@@ -18,6 +18,9 @@ export default function RoomHeader({
   me,
   memberCount,
   onToggleSidebar,
+  onToggleGames,
+  gamesOpen,
+  gameActive,
   onLeave,
   onTerminate,
 }: {
@@ -27,6 +30,10 @@ export default function RoomHeader({
   me: SessionClaims;
   memberCount: number;
   onToggleSidebar: () => void;
+  onToggleGames: () => void;
+  gamesOpen: boolean;
+  /** Drives the dot that says a table is open even while the panel is hidden. */
+  gameActive: boolean;
   onLeave: () => void;
   onTerminate: () => void;
 }) {
@@ -70,6 +77,22 @@ export default function RoomHeader({
           <span style={{ color: me.color }}>{me.name}</span>
         </p>
       </div>
+
+      <button
+        onClick={onToggleGames}
+        title="Games"
+        aria-pressed={gamesOpen}
+        className={`relative shrink-0 rounded-lg border px-3 py-1.5 text-xs transition ${
+          gamesOpen
+            ? 'border-accent bg-accent/10 text-ink-50'
+            : 'border-ink-700 bg-ink-850 text-ink-200 hover:bg-ink-800'
+        }`}
+      >
+        🎮 Games
+        {gameActive && !gamesOpen && (
+          <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-accent" />
+        )}
+      </button>
 
       <button
         onClick={copyInvite}
