@@ -69,7 +69,16 @@ export async function terminateRoom(code: string, byName: string): Promise<void>
   // Blobs go first: they are the largest thing the room holds, and they are
   // enumerated from an index that is itself about to be deleted.
   await deleteAllPhotos(code);
-  await r.del(K.meta(code), K.members(code), K.photoIndex(code));
+
+  // Derived from K.all rather than listed by hand. The hand-written list was a
+  // trap: K.all is the set every write refreshes a TTL on, so adding a key
+  // there felt like registering it for deletion too, and the room's game board
+  // was consequently left behind for 12h after the room was destroyed. Anything
+  // added to K.all from now on is deleted here automatically.
+  const doomed = K.all(code).filter((key) => key !== K.stream(code));
+  await r.del(...doomed);
+
+  // The stream alone outlives the room, briefly, to carry the goodbye frame.
   await r.expire(K.stream(code), TERMINATION_GRACE_SECONDS);
 }
 

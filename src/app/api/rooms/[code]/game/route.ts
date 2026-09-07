@@ -20,6 +20,13 @@ export async function GET(_req: Request, { params }: Ctx) {
     if (!code) return fail('Invalid room code', 400);
     const self = await readSession(code);
     if (!self) return fail('Join the room first', 401);
+
+    // A session cookie outlives the room it was minted for, so without this the
+    // board stayed readable to former players after the host destroyed the
+    // room. Every other route already gates on the room existing; this one did
+    // not, which made it the way back in to a deleted table.
+    if (!(await getRoom(code))) return fail('This room has ended', 410);
+
     return json({ game: await getGame(code) });
   } catch (err) {
     return handleRouteError(err);
